@@ -1,7 +1,7 @@
 acontext("save separate chunks")
 library(plyr)
 
-data(FluView)
+data(FluView, package = "animint")
 # use one season to test
 state_flu <- subset(FluView$state_flu, SEASON == "2008-09")
 flu.by.weekend <- split(state_flu, state_flu$WEEKEND)
@@ -60,6 +60,7 @@ test_that("save separate chunks for geom_polygon", {
          stateMap = state.map,
          title = "FluView")
   out.dir <- file.path(getwd(), "FluView")
+  unlink(out.dir, recursive = TRUE)
   animint2dir(viz, out.dir = out.dir, open.browser = FALSE)
   
   common.chunk <-
@@ -73,12 +74,12 @@ test_that("save separate chunks for geom_polygon", {
   no.chunks <- length(varied.chunks)
   expect_equal(no.chunks, length(unique(map_flu$WEEKEND)))
   ## test common.chunk
-  common.data <- read.csv(common.chunk, sep = "\t")
+  common.data <- read.csv(common.chunk, sep = "\t", comment.char = "")
   expect_equal(nrow(common.data), nrow(FluView$USpolygons))
   expect_true(all(c("x", "y", "group") %in% names(common.data)))
   ## randomly choose n varied.chunk to test
   idx <- sample(no.chunks, 1)
-  varied.data <- read.csv(varied.chunks[idx], sep = "\t")
+  varied.data <- read.csv(varied.chunks[idx], sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), length(unique(FluView$USpolygons$group)))
   expect_true(all(c("fill", "group") %in% names(varied.data)))
   
@@ -110,6 +111,7 @@ test_that("save separate chunks for geom_point without specifying group", {
          stateMap = state.map,
          title = "FluView")
   out.dir <- file.path(getwd(), "FluView-point")
+  unlink(out.dir, recursive = TRUE)
   animint2dir(viz, out.dir = out.dir, open.browser = FALSE)
   
   common.chunk <-
@@ -122,7 +124,7 @@ test_that("save separate chunks for geom_point without specifying group", {
   expect_equal(length(common.chunk), 0L)
   expect_equal(length(varied.chunks), 1L)
   ## test the only one varied.chunk
-  varied.data <- read.csv(varied.chunks, sep = "\t")
+  varied.data <- read.csv(varied.chunks, sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), nrow(flu.points))
   expect_true(all(c("fill", "x", "y", "showSelected") %in% names(varied.data)))
   
@@ -135,7 +137,8 @@ test_that("save separate chunks for geom_point without specifying group", {
                data = flu.points,                
                color = "black",
                size = 10,
-               chunk_vars = "WEEKEND")
+               chunk_vars = "WEEKEND",
+               validate_params = FALSE)
   viz <-
     list(levelHeatmap = level.heatmap,
          stateMap = state.map,
@@ -153,12 +156,12 @@ test_that("save separate chunks for geom_point without specifying group", {
   no.chunks <- length(varied.chunks)
   expect_equal(no.chunks, length(unique(flu.points$WEEKEND)))
   # test common.chunk
-  common.data <- read.csv(common.chunk, sep = "\t")
+  common.data <- read.csv(common.chunk, sep = "\t", comment.char = "")
   expect_equal(nrow(common.data), nrow(USdots))
   expect_true(all(c("x", "y", "group") %in% names(common.data)))
   # randomly choose an varied.chunk to test
   idx <- sample(no.chunks, 1)
-  varied.data <- read.csv(varied.chunks[idx], sep = "\t")
+  varied.data <- read.csv(varied.chunks[idx], sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), nrow(USdots))
   expect_true(all(c("fill", "group") %in% names(varied.data)))
     
@@ -168,7 +171,7 @@ test_that("save separate chunks for geom_point without specifying group", {
 ### test case 3: WorldBank data, without Israel. For some reason
 ### Israel appears on travis/wercker but not on local computers, so we
 ### just get rid of it for this test.
-data(WorldBank)
+data(WorldBank, package = "animint")
 
 no.israel <- subset(WorldBank, country != "Israel")
 
@@ -204,7 +207,8 @@ scatter <- ggplot()+
   geom_text(aes(life.expectancy, fertility.rate, label=country,
                 showSelected=country, showSelected2=year,
                 key=country), # also use key here!
-            data=no.israel, chunk_vars=c("year", "country"))+
+            data=no.israel, chunk_vars=c("year", "country"),
+            validate_params = FALSE)+
   scale_size_animint(breaks=10^(5:9))+
   make_text(no.israel, 55, 9, "year")
 
@@ -223,6 +227,7 @@ test_that("save separate chunks for non-spatial geoms with repetitive field, mul
          first=list(year=1975, country="United States"),
          title="World Bank data (multiple selections)")
   out.dir <- file.path(getwd(), "WorldBank-all")
+  unlink(out.dir, recursive=TRUE)
   info <- animint2dir(viz, out.dir = out.dir, open.browser = FALSE)
   
   ## multiple vars selected
@@ -236,7 +241,7 @@ test_that("save separate chunks for non-spatial geoms with repetitive field, mul
   expect_equal(length(common.chunk), 0L)
   expect_equal(length(varied.chunks), nrow(text.not.na))
   ## choose first varied.chunk to test
-  varied.data <- read.csv(varied.chunks[1], sep = "\t")
+  varied.data <- read.csv(varied.chunks[1], sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), 1)
   expect_true(all(c("x", "y", "label", "key") %in% names(varied.data)))
   
@@ -251,7 +256,7 @@ test_that("save separate chunks for non-spatial geoms with repetitive field, mul
   expect_equal(length(common.chunk), 1L)
   expect_equal(length(varied.chunks), length(unique.year.vec))
   ## test common.chunk
-  common.data <- read.csv(common.chunk, sep = "\t")
+  common.data <- read.csv(common.chunk, sep = "\t", comment.char = "")
   expect_equal(nrow(common.data), length(unique.country.vec))
   common.must.have <- c("colour", "clickSelects", "key", "showSelectedlegendcolour", "fill", "group")
   expect_true(all(common.must.have %in% names(common.data)))
@@ -263,7 +268,7 @@ test_that("save separate chunks for non-spatial geoms with repetitive field, mul
   chunk.num <- chunk.info[[year.str]]
   tsv.name <- sprintf("geom1_point_scatter_chunk%d.tsv", chunk.num)
   tsv.path <- file.path(out.dir, tsv.name)
-  varied.data <- read.csv(tsv.path, sep = "\t")
+  varied.data <- read.csv(tsv.path, sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), nrow(expected.data))
   varied.must.have <-
     c("size", "x", "y", "tooltip", "group")
@@ -273,7 +278,7 @@ test_that("save separate chunks for non-spatial geoms with repetitive field, mul
 })
 
 ### test case 4
-data(breakpoints)
+data(breakpoints, package = "animint")
 
 only.error <- subset(breakpoints$error, type=="E")
 only.segments <- subset(only.error, samples==samples[1])
@@ -301,6 +306,7 @@ test_that("save separate chunks for non-spatial geoms with nest_order not being 
     list(signal = signal,
          title="breakpointError (select one model size)")
   out.dir <- file.path(getwd(), "breakpointError-single")
+  unlink(out.dir, recursive = TRUE)
   animint2dir(viz, out.dir = out.dir, open.browser = FALSE)
   
   common.chunk <-
@@ -314,7 +320,7 @@ test_that("save separate chunks for non-spatial geoms with nest_order not being 
   no.chunks <- length(varied.chunks)
   expect_equal(no.chunks, length(unique(breakpoints$segments$samples)))
   ## test common.chunk
-  common.data <- read.csv(common.chunk, sep = "\t")
+  common.data <- read.csv(common.chunk, sep = "\t", comment.char = "")
   n.samples <- length(unique(breakpoints$segments$samples))
   expected.rows <- nrow(breakpoints$segments) / n.samples
   expect_equal(nrow(common.data), expected.rows)
@@ -322,7 +328,7 @@ test_that("save separate chunks for non-spatial geoms with nest_order not being 
   expect_true(all(common.must.have %in% names(common.data)))
   # randomly choose an varied.chunk to test
   idx <- sample(no.chunks, 1)
-  varied.data <- read.csv(varied.chunks[idx], sep = "\t")
+  varied.data <- read.csv(varied.chunks[idx], sep = "\t", comment.char = "")
   expect_equal(nrow(varied.data), expected.rows)
   must.have <- c("x", "xend", "y", "yend", "group")
   expect_true(all(must.have %in% names(varied.data)))

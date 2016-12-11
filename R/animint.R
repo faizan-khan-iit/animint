@@ -16,28 +16,10 @@ parsePlot <- function(meta){
     if(is.null(meta$plot$layers[[layer.i]]$mapping)){
       meta$plot$layers[[layer.i]]$mapping <- meta$plot$mapping
     }
-    
   }
-  
   
   meta$built <- ggplot2::ggplot_build(meta$plot)
   plot.meta <- list()
-  scaleFuns <-
-    list(manual=function(sc)sc$palette(0),
-         brewer=function(sc)sc$palette(length(sc$range$range)),
-         hue=function(sc)sc$palette(length(sc$range$range)),
-         linetype_d=function(sc)sc$palette(length(sc$range$range)),
-         alpha_c=function(sc)sc$palette(sc$range$range),
-         size_c=function(sc)sc$palette(sc$range$range),
-         gradient=function(sc){
-           ggplot2:::scale_map(sc, ggplot2:::scale_breaks(sc))
-         })
-  for(sc in meta$plot$scales$scales){
-    if(!is.null(sc$range$range)){
-      makeScale <- scaleFuns[[sc$scale_name]]
-      plot.meta$scales[[sc$aesthetics]] <- makeScale(sc)
-    }
-  }
   
   ## Export axis specification as a combination of breaks and
   ## labels, on the relevant axis scale (i.e. so that it can
@@ -48,7 +30,15 @@ parsePlot <- function(meta){
 
   ## Interpret panel.margin as the number of lines between facets
   ## (ignoring whatever grid::unit such as cm that was specified).
-  plot.meta$panel_margin_lines <- as.numeric(theme.pars$panel.margin)
+  
+  ## Now ggplot specifies panel.margin in 'pt' instead of 'lines'
+  pt.to.lines <- function(margin.value){
+    if(attributes(margin.value)$unit == "pt"){
+      margin.value <- round(as.numeric(margin.value) * (0.25/5.5), digits = 2)
+    }
+    as.numeric(margin.value)
+  }
+  plot.meta$panel_margin_lines <- pt.to.lines(theme.pars$panel.margin)
   
   ## No legend if theme(legend.postion="none").
   plot.meta$legend <- if(theme.pars$legend.position != "none"){
@@ -67,6 +57,7 @@ parsePlot <- function(meta){
       s.name <- one.legend$selector
       is.variable.name <- is.character(s.name) && length(s.name) == 1
       layer.has.variable <- s.name %in% names(L$data)
+      
       if(is.variable.name && layer.has.variable) {
         ## grabbing the variable from the data
         var <- L$data[, s.name]
@@ -111,9 +102,8 @@ parsePlot <- function(meta){
       }#length(s.name)
     }#legend.i
   }#layer.i
-    
+
   ## need to call ggplot_build again because we've added to the plot.
-  
   ## I'm sure that there is a way around this, but not immediately sure how. 
   ## There's sort of a Catch-22 here because to create the interactivity, 
   ## we need to specify the variable corresponding to each legend. 
@@ -129,13 +119,6 @@ parsePlot <- function(meta){
   plot.meta$layout <- with(meta$built, flag_axis(plot$facet, panel$layout))
   plot.meta$layout <- with(meta$built, train_layout(
     plot$facet, plot$coordinates, plot.meta$layout, panel$ranges))
-
-  ## Export axis specification as a combination of breaks and
-  ## labels, on the relevant axis scale (i.e. so that it can
-  ## be passed into d3 on the x axis scale instead of on the
-  ## grid 0-1 scale). This allows transformations to be used
-  ## out of the box, with no additional d3 coding.
-  theme.pars <- ggplot2:::plot_theme(meta$plot)
   
   ## extract panel background and borders from theme.pars
   get_bg <- function(pars) {
@@ -182,16 +165,15 @@ parsePlot <- function(meta){
       
       # remove names (JSON file was getting confused)
       pars <- lapply(pars, unname)
-      
     }
     
     ## x and y locations
     if(major) {
-      pars$loc$x <- as.list(meta$built$panel$ranges[[1]]$x.major)
-      pars$loc$y <- as.list(meta$built$panel$ranges[[1]]$y.major)
+      pars$loc$x <- as.list(meta$built$panel$ranges[[1]]$x.major_source)
+      pars$loc$y <- as.list(meta$built$panel$ranges[[1]]$y.major_source)
     } else {
-      pars$loc$x <- as.list(meta$built$panel$ranges[[1]]$x.minor)
-      pars$loc$y <- as.list(meta$built$panel$ranges[[1]]$y.minor)
+      pars$loc$x <- as.list(meta$built$panel$ranges[[1]]$x.minor_source)
+      pars$loc$y <- as.list(meta$built$panel$ranges[[1]]$y.minor_source)
       ## remove minor lines when major lines are already drawn
       pars$loc$x <- pars$loc$x[
         !(pars$loc$x %in% plot.meta$grid_major$loc$x)
@@ -200,7 +182,6 @@ parsePlot <- function(meta){
         !(pars$loc$y %in% plot.meta$grid_major$loc$y)
         ]
     }
-    
     pars
   }
   # extract major grid lines
@@ -211,7 +192,7 @@ parsePlot <- function(meta){
   ## Flip labels if coords are flipped - transform does not take care
   ## of this. Do this BEFORE checking if it is blank or not, so that
   ## individual axes can be hidden appropriately, e.g. #1.
-  if("flip"%in%attr(meta$plot$coordinates, "class")){
+  if("CoordFlip"%in%attr(meta$plot$coordinates, "class")){
     temp <- meta$plot$labels$x
     meta$plot$labels$x <- meta$plot$labels$y
     meta$plot$labels$y <- temp
@@ -241,7 +222,7 @@ parsePlot <- function(meta){
       lab.or.null <- if(length(scale.i) == 1){
         meta$plot$scales$scales[[scale.i]]$name
       }
-      if(is.null(lab.or.null)){
+      if(is.null(unlist(lab.or.null))){
         meta$plot$labels[[xy]]
       }else{
         lab.or.null
@@ -271,7 +252,7 @@ parsePlot <- function(meta){
     for (axis in names(axes)) {
       ctr <- ctr + 1
       range <- ranges[[ctr]]
-      plot.meta[[axis]][[xy]] <- as.list(range[[s("%s.major")]])
+      plot.meta[[axis]][[xy]] <- as.list(range[[s("%s.major_source")]])
       plot.meta[[axis]][[s("%slab")]] <- if(is.blank(s("axis.text.%s"))){
         NULL
       } else {
@@ -306,6 +287,11 @@ parsePlot <- function(meta){
     }
   }
 
+  update_axes <- "animint.update_axes"
+  if(update_axes %in% names(theme)){
+    plot.meta$options$update_axes <- theme[[update_axes]]
+  }
+
   meta$plots[[meta$plot.name]] <- plot.meta
 
   list(
@@ -338,8 +324,12 @@ hjust2anchor <- function(hjust){
 #' @return list representing a layer, with corresponding aesthetics, ranges, and groups.
 #' @export
 saveLayer <- function(l, d, meta){
+  # carson's approach to getting layer types
+  ggtype <- function (x, y = "geom") {
+    sub(y, "", tolower(class(x[[y]])[1]))
+  }
   ranges <- meta$built$panel$ranges
-  g <- list(geom=l$geom$objname)
+  g <- list(geom=ggtype(l))
   g$classed <-
     sprintf("geom%d_%s_%s",
             meta$geom.count, g$geom, meta$plot.name)
@@ -355,7 +345,8 @@ saveLayer <- function(l, d, meta){
   ## use un-named parameters so that they will not be exported
   ## to JSON as a named object, since that causes problems with
   ## e.g. colour.
-  g$params <- c(l$geom_params, l$stat_params)
+  ## 'colour', 'size' etc. have been moved to aes_params
+  g$params <- c(l$geom_params, l$stat_params, l$aes_params, l$extra_params)
   for(p.name in names(g$params)){
     if("chunk_vars" %in% names(g$params) && is.null(g$params[["chunk_vars"]])){
       g$params[["chunk_vars"]] <- character()
@@ -395,6 +386,7 @@ saveLayer <- function(l, d, meta){
   ## plot.Selectors.
 
   s.aes <- selector.aes(g$aes)
+  meta$selector.aes[[g$classed]] <- s.aes
 
   ## Do not copy group unless it is specified in aes, and do not copy
   ## showSelected variables which are specified multiple times.
@@ -486,19 +478,31 @@ saveLayer <- function(l, d, meta){
     }
   }
 
-  ## Warn if stat_bin is used with animint aes. geom_bar + stat_bin
-  ## doesn't make sense with clickSelects/showSelected, since two
+  is.show <- grepl("showSelected", names(g$aes))
+  has.show <- any(is.show)
+  ## Error if non-identity stat is used with showSelected, since
+  ## typically the stats will delete the showSelected column from the
+  ## built data set. For example geom_bar + stat_bin doesn't make
+  ## sense with clickSelects/showSelected, since two
   ## clickSelects/showSelected values may show up in the same bin.
-  stat <- l$stat
-  if(!is.null(stat)){
-    is.bin <- stat$objname=="bin"
-    is.animint.aes <- grepl("clickSelects|showSelected", names(g$aes))
-    if(is.bin & any(is.animint.aes)){
-      warning(paste0("stat_bin is unpredictable ",
-                    "when used with clickSelects/showSelected.\n",
-                     "Use plyr::ddply() to do the binning ",
-                     "or use make_bar if using geom_bar/geom_histogram."))
-    }
+  stat.type <- class(l$stat)[[1]]
+  if(has.show && stat.type != "StatIdentity"){
+    show.names <- names(g$aes)[is.show]
+    data.has.show <- show.names %in% names(g.data)
+    signal <- if(all(data.has.show))warning else stop
+    print(l)
+    signal(
+      "showSelected does not work with ",
+      stat.type,
+      ", problem: ",
+      g$classed)
+  }
+  ## Warn if non-identity position is used with animint aes.
+  position.type <- class(l$position)[[1]]
+  if(has.show && position.type != "PositionIdentity"){
+    print(l)
+    warning("showSelected only works with position=identity, problem: ",
+            g$classed)
   }
 
   ##print("before pre-processing")
@@ -535,7 +539,10 @@ saveLayer <- function(l, d, meta){
     g$geom <- "segment"
   } else if(g$geom=="point"){
     # Fill set to match ggplot2 default of filled in circle.
-    fill.specified <- "fill" %in% names(g.data) || "fill" %in% names(g$params)
+    # Check for fill in both data and params
+    fill.in.data <- ("fill" %in% names(g.data) && any(!is.na(g.data[["fill"]])))
+    fill.in.params <- "fill" %in% names(g$params)
+    fill.specified <- fill.in.data || fill.in.params
     if(!fill.specified & "colour" %in% names(g.data)){
       g.data[["fill"]] <- g.data[["colour"]]
     }
@@ -560,7 +567,7 @@ saveLayer <- function(l, d, meta){
     } 
     if("vjust" %in% names(g$params)) {
       vjustWarning(g$params$vjust)
-    } else if ("vjust" %in% names(g.data)) { 
+    } else if ("vjust" %in% names(g$aes)) {
       vjustWarning(g.data$vjust)
     } 
   } else if(g$geom=="ribbon"){
@@ -648,9 +655,6 @@ saveLayer <- function(l, d, meta){
       # Make outer border of 0 size if size isn't already specified.
       if(!"size"%in%names(g.data)) g.data[["size"]] <- 0
     }
-  } else {
-    ## all other geoms are basic, and keep the same name.
-    g$geom
   }
 
   ## Some geoms need their data sorted before saving to tsv.
@@ -673,13 +677,6 @@ saveLayer <- function(l, d, meta){
   if(zero.size && has.no.fill){
     warning(sprintf("geom_%s with size=0 will be invisible",g$geom))
   }
-
-  ## Idea: use the ggplot2:::coord_transform(coords, data, scales)
-  ## function to handle cases like coord_flip. scales is a list of
-  ## 12, coords is a list(limits=list(x=NULL,y=NULL)) with class
-  ## e.g. c("cartesian","coord"). The result is a transformed data
-  ## frame where all the data values are between 0 and 1.
-
   ## TODO: coord_transform maybe won't work for
   ## geom_dotplot|rect|segment and polar/log transformations, which
   ## could result in something nonlinear. For the time being it is
@@ -687,13 +684,22 @@ saveLayer <- function(l, d, meta){
   ## e.g. geom-rect.r in ggplot2 to see how they deal with this by
   ## doing a piecewise linear interpolation of the shape.
 
-  # Apply coord_transform seperately to each panel
-  # Note the plotly implementation does not use
-  # coord_transform...do they take care of the transformation
-  # at a different point in time?
-  g.data <- do.call("rbind", mapply(function(x, y) {
-    ggplot2:::coord_transform(meta$plot$coord, x, y)
-  }, split(g.data, g.data[["PANEL"]]), ranges, SIMPLIFY = FALSE))
+  # Flip axes in case of coord_flip
+  # Switches column names. Eg. xmin to ymin, yntercept to xintercept etc.
+  switch_axes <- function(col.names){
+    for(elem in seq_along(col.names)){
+      if(grepl("^x", col.names[elem])){
+        col.names[elem] <- sub("^x", "y", col.names[elem])
+      } else if(grepl("^y", col.names[elem])){
+        col.names[elem] <- sub("^y", "x", col.names[elem])
+      }
+    }
+    col.names
+  }
+
+  if(inherits(meta$plot$coordinates, "CoordFlip")){
+    names(g.data) <- switch_axes(names(g.data))
+  }
 
   ## Output types
   ## Check to see if character type is d3's rgb type.
@@ -721,6 +727,7 @@ saveLayer <- function(l, d, meta){
       type
     }
   })
+  g$types[["group"]] <- "character"
 
   ## convert ordered factors to unordered factors so javascript
   ## doesn't flip out.
@@ -730,19 +737,33 @@ saveLayer <- function(l, d, meta){
     g$types[[i]] <- "factor"
   }
 
-  ## Make the time variable the first subset_order variable.
-  time.col <- if(is.null(meta$time)){ # if this is not an animation,
-    NULL
-  }else{
-    click.or.show <- grepl("clickSelects|showSelected", names(g$aes))
-    names(g$aes)[g$aes==meta$time$var & click.or.show]
+  ## Get unique values of time variable.
+  time.col <- NULL
+  if(is.list(meta$time)){ # if this is an animation,
+    g.time.list <- list()
+    for(c.or.s in names(s.aes)){
+      cs.info <- s.aes[[c.or.s]]
+      for(a in cs.info$one){
+        if(g$aes[[a]] == meta$time$var){
+          g.time.list[[a]] <- g.data[[a]]
+          time.col <- a
+        }
+      }
+      for(row.i in seq_along(cs.info$several$value)){
+        cs.row <- cs.info$several[row.i,]
+        c.name <- paste(cs.row$variable)
+        is.time <- g.data[[c.name]] == meta$time$var
+        g.time.list[[c.name]] <- g.data[is.time, paste(cs.row$value)]
+      }
+    }
+    u.vals <- unique(unlist(g.time.list))
+    if(length(u.vals)){
+      meta$timeValues[[paste(g$classed)]] <- sort(u.vals)
+    }
   }
+  ## Make the time variable the first subset_order variable.
   if(length(time.col)){
     pre.subset.order <- pre.subset.order[order(pre.subset.order != time.col)]
-  }
-  ## Get unique values of time variable.
-  if(length(time.col)){ # if this layer/geom is animated,
-    meta$timeValues[[paste(g$classed)]] <- unique(g.data[[time.col]])
   }
 
   ## Determine which showSelected values to use for breaking the data
@@ -857,7 +878,7 @@ saveLayer <- function(l, d, meta){
   if(geom.has.one.panel && (!plot.has.panels)) {
     g.data <- g.data[names(g.data) != "PANEL"]
   }
-  
+
   ## Also add pointers to these chunks from the related selectors.
   if(length(chunk.cols)){
     selector.names <- as.character(g$aes[chunk.cols])
@@ -893,17 +914,39 @@ saveLayer <- function(l, d, meta){
   }
     
   ## group should be the last thing in nest_order, if it is present.
-  if("group" %in% names(g$aes)){
+  data.object.geoms <- c("line", "path", "ribbon", "polygon")
+  if("group" %in% names(g$aes) && g$geom %in% data.object.geoms){
     g$nest_order <- c(g$nest_order, "group")
+  }
+
+  ## Some geoms should be split into separate groups if there are NAs.
+  if(any(is.na(g.data)) && "group" %in% names(g$aes)){
+    sp.cols <- unlist(c(chunk.cols, g$nest_order))
+    order.args <- list()
+    for(sp.col in sp.cols){
+      order.args[[sp.col]] <- g.data[[sp.col]]
+    }
+    ord <- do.call(order, order.args)
+    g.data <- g.data[ord,]
+    is.missing <- apply(is.na(g.data), 1, any)
+    diff.vec <- diff(is.missing)
+    new.group.vec <- c(FALSE, diff.vec == 1)
+    for(chunk.col in sp.cols){
+      one.col <- g.data[[chunk.col]]
+      is.diff <- c(FALSE, one.col[-1] != one.col[-length(one.col)])
+      new.group.vec[is.diff] <- TRUE
+    }
+    subgroup.vec <- cumsum(new.group.vec)
+    g.data$group <- subgroup.vec
   }
 
   ## Determine if there are any "common" data that can be saved
   ## separately to reduce disk usage.
   data.or.null <- getCommonChunk(g.data, chunk.cols, g$aes)
   g.data.varied <- if(is.null(data.or.null)){
-    split.x(g.data, chunk.cols)
+    split.x(na.omit(g.data), chunk.cols)
   }else{
-    g$columns <- lapply(data.or.null, names)
+    g$columns$common <- as.list(names(data.or.null$common))
     tsv.name <- sprintf("%s_chunk_common.tsv", g$classed)
     tsv.path <- file.path(meta$out.dir, tsv.name)
     write.table(data.or.null$common, tsv.path,
@@ -939,6 +982,13 @@ getCommonChunk <- function(built, chunk.vars, aes.list){
     ## group for deciding common data.
     built$group <- NULL
   }
+  
+  ## Remove columns with all NA values
+  ## so that common.not.na is not empty
+  ## due to the plot's alpha, stroke or other columns
+  all.nas <- sapply(built, function(x){all(is.na(x))})
+  built <- built[, !all.nas]
+  
   ## Treat factors as characters, to avoid having them be coerced to
   ## integer later.
   for(col.name in names(built)){
@@ -946,62 +996,90 @@ getCommonChunk <- function(built, chunk.vars, aes.list){
       built[, col.name] <- paste(built[, col.name])
     }
   }
-  built.by.chunk <- split(built, built[, chunk.vars], drop = TRUE)
-  if(length(built.by.chunk) == 1) return(NULL)
+
+  ## If there is only one chunk, then there is no point of making a
+  ## common data file.
+  chunk.rows.tab <- table(built[, chunk.vars])
+  if(length(chunk.rows.tab) == 1) return(NULL)
+
   ## If there is no group column, and all the chunks are the same
   ## size, then add one based on the row number.
   if(! "group" %in% names(built)){
-    chunk.rows.vec <- sapply(built.by.chunk, nrow)
-    chunk.rows <- chunk.rows.vec[1]
-    same.size <- chunk.rows == chunk.rows.vec
+    chunk.rows <- chunk.rows.tab[1]
+    same.size <- chunk.rows == chunk.rows.tab
+    order.args <- lapply(chunk.vars, function(order.col)built[[order.col]])
+    built <- built[do.call(order, order.args),]
     if(all(same.size)){
-      for(chunk.name in names(built.by.chunk)){
-        built.by.chunk[[chunk.name]]$group <- 1:chunk.rows
-      }
+      built$group <- 1:chunk.rows
     }else{
       ## do not save a common chunk file.
       return(NULL)
     }
   }
-  all.col.names <- names(built.by.chunk[[1]])
-  col.name.vec <- all.col.names[!all.col.names %in% chunk.vars]
-  values.by.group <- list()
-  for(chunk.name in names(built.by.chunk)){
-    chunk.df <- built.by.chunk[[chunk.name]]
-    chunk.by.group <- split(chunk.df, chunk.df$group, drop=TRUE)
-    for(group.name in names(chunk.by.group)){
-      values.by.group[[group.name]][[chunk.name]] <-
-        chunk.by.group[[group.name]]
+
+  built.by.group <- split(built, built$group)
+  group.tab <- table(built[, c("group", chunk.vars)])
+  each.group.same.size <- apply(group.tab, 1, function(group.size.vec){
+    group.size <- group.size.vec[1]
+    if(all(group.size == group.size.vec)){
+      ## groups are all this size.
+      group.size
+    }else{
+      ## groups not the same size.
+      0
     }
-  }
-  is.common.mat <-
-    matrix(NA, length(values.by.group), length(col.name.vec),
-           dimnames=list(group=names(values.by.group),
-             col.name=col.name.vec))
-  for(group.name in names(values.by.group)){
-    values.by.chunk <- values.by.group[[group.name]]
-    row.count.vec <- sapply(values.by.chunk, nrow)
-    same.size.chunks <- all(row.count.vec[1] == row.count.vec)
-    for(col.name in col.name.vec){
-      value.list <- lapply(values.by.chunk, function(df)df[[col.name]])
-      is.common.mat[group.name, col.name] <- if(same.size.chunks){
-        value.mat <- do.call(cbind, value.list)
-        all(value.mat[, 1] == value.mat)
+  })
+
+  checkCommon <- function(col.name){
+    for(group.name in names(built.by.group)){
+      data.vec <- built.by.group[[group.name]][[col.name]]
+      if(group.size <- each.group.same.size[[group.name]]){
+        not.same.value <- data.vec != data.vec[1:group.size]
+        if(any(not.same.value, na.rm=TRUE)){
+          ## if any data values are different, then this is not a
+          ## common column.
+          return(FALSE)
+        }
       }else{
-        value.tab <- table(unlist(value.list))
-        length(value.tab) == 1
+        ## this group has different sizes in different chunks, so the
+        ## only way that we can make common data is if there is only
+        ## value.
+        value.tab <- table(data.vec)
+        if(length(value.tab) != 1){
+          return(FALSE)
+        }
       }
     }
+    TRUE
   }
-  is.common <- apply(is.common.mat, 2, all, na.rm=TRUE)
+
+  all.col.names <- names(built)
+  col.name.vec <- all.col.names[!all.col.names %in% chunk.vars]
+  is.common <- sapply(col.name.vec, checkCommon)
+                      
   ## TODO: another criterion could be used to save disk space even if
   ## there is only 1 chunk.
-  if(is.common[["group"]] && sum(is.common) >= 2){
+  n.common <- sum(is.common)
+  if(is.common[["group"]] && 2 <= n.common && n.common < length(is.common)){
     common.cols <- names(is.common)[is.common]
-    one.chunk <- built.by.chunk[[1]]
-    ## Should each chunk have the same info about each group? 
-    common.not.na <- na.omit(one.chunk[common.cols])
-    common.unique <- unique(common.not.na)
+    group.info.list <- list()
+    for(group.name in names(built.by.group)){
+      one.group <- built.by.group[[group.name]]
+      group.size <- each.group.same.size[[group.name]]
+      if(group.size == 0){
+        group.size <- 1
+      }
+      group.common <- one.group[, common.cols]
+      ## Instead of just taking the first chunk for this group (which
+      ## may have NA), look for the chunk which has the fewest NA.
+      is.na.vec <- apply(is.na(group.common), 1, any)
+      is.na.mat <- matrix(is.na.vec, group.size)
+      group.i <- which.min(colSums(is.na.mat))
+      offset <- (group.i-1)*group.size
+      group.info.list[[group.name]] <- group.common[(1:group.size)+offset, ]
+    }
+    group.info.common <- do.call(rbind, group.info.list)
+    common.unique <- unique(group.info.common)
     ## For geom_polygon and geom_path we may have two rows that should
     ## both be kept (the start and the end of each group may be the
     ## same if the shape is closed), so we define common.data as all
@@ -1011,14 +1089,12 @@ getCommonChunk <- function(built, chunk.vars, aes.list){
     common.data <- if(all(data.per.group == 1)){
       common.unique
     }else{
-      common.not.na
+      group.info.common
     }
-    built.group <- do.call(rbind, built.by.chunk)
-    built.has.common <- subset(built.group, group %in% common.data$group)
-    varied.df.list <- split.x(built.has.common, chunk.vars)
+    varied.df.list <- split.x(na.omit(built), chunk.vars)
     varied.cols <- c("group", names(is.common)[!is.common])
     varied.data <- varied.chunk(varied.df.list, varied.cols)
-    return(list(common=common.data,
+    return(list(common=na.omit(common.data),
                 varied=varied.data))
   }
 }
@@ -1049,6 +1125,13 @@ varied.chunk <- function(df.or.list, cols){
 split.x <- function(x, vars){
   if(length(vars)==0)return(x)
   if(is.data.frame(x)){
+    
+    ## Remove columns with all NA values
+    ## so that x is not empty due to
+    ## the plot's alpha, stroke or other columns
+    all.nas <- sapply(x, function(col.m){all(is.na(col.m))})
+    x <- x[, !all.nas]
+    
     # rows with NA should not be saved
     x <- na.omit(x)
     if(length(vars) == 1){
@@ -1304,8 +1387,16 @@ animint2dir <- function(plot.list, out.dir = tempfile(),
         }
         iaes <- selector.aes(L$mapping)
         one.names <- with(iaes, c(clickSelects$one, showSelected$one))
-        update.vars <- L$mapping[one.names]
-        has.var <- update.vars %in% names(L$data)
+        update.vars <- as.character(L$mapping[one.names])
+        # if the layer has a defined data set
+        if(length(L$data) > 0) {
+          # check whether the variable is in that layer
+          has.var <- update.vars %in% names(L$data)
+        } else {
+          # check whether the variable is in the global data
+          has.var <- update.vars %in% names(p$data)
+        }
+        
         if(!all(has.var)){
           print(L)
           print(list(problem.aes=update.vars[!has.var],
@@ -1348,6 +1439,24 @@ animint2dir <- function(plot.list, out.dir = tempfile(),
       meta$plot.name <- p.name
       meta$plot <- ggplot.info$ggplot
       meta$built <- ggplot.info$built
+      
+      ## Data now contains columns with fill, alpha, colour etc.
+      ## Remove from data if they have a single unique value and
+      ## are NOT used in mapping to reduce tsv file size
+      redundant.cols <- names(L$geom$default_aes)
+      for(col.name in names(df)){
+        if(col.name %in% redundant.cols){
+          all.vals <- unique(df[[col.name]])
+          if(length(all.vals) == 1){
+            in.mapping <-
+              !is.null(L$mapping[[col.name]])
+            if(!in.mapping){
+              df[[col.name]] <- NULL
+            }
+          }
+        }
+      }
+      
       g <- saveLayer(L, df, meta)
 
       ## Every plot has a list of geom names.
@@ -1398,6 +1507,24 @@ animint2dir <- function(plot.list, out.dir = tempfile(),
       as.list(unique(unlist(lapply(values.update, "[[", "update"))))
   }
 
+  ## Now that selectors are all defined, go back through geoms to
+  ## check if there are any warnings to issue.
+  for(g.name in names(meta$geoms)){
+    g.info <- meta$geoms[[g.name]]
+    g.selectors <- meta$selector.aes[[g.name]]
+    show.vars <- g.info$aes[g.selectors$showSelected$one]
+    duration.vars <- names(meta$duration)
+    show.with.duration <- show.vars[show.vars %in% duration.vars]
+    no.key <- ! "key" %in% names(g.info$aes)
+    if(length(show.with.duration) && no.key){
+      warning(
+        "to ensure that smooth transitions are interpretable, ",
+        "aes(key) should be specifed for geoms with aes(showSelected=",
+        show.with.duration[1],
+        "), problem: ", g.name)
+    }
+  }
+  
   ## For a static data viz with no interactive aes, no need to check
   ## for trivial showSelected variables with only 1 level.
   if(0 < length(meta$selectors)){
@@ -1499,7 +1626,231 @@ animint2dir <- function(plot.list, out.dir = tempfile(),
       stop("missing first selector variable")
     }
   }
-
+  
+  ## Compute domains of different subsets, to be used by update_scales
+  ## in the renderer
+  compute_domains <- function(built_data, axes, geom_name,
+                             vars, split_by_panel){
+    # Different geoms will use diff columns to calculate domains for
+    # showSelected subsets. Eg. geom_bar will use 'xmin', 'xmax', 'ymin',
+    # 'ymax' etc. while geom_point will use 'x', 'y'
+    domain_cols <- list(bar=c(paste0(axes, "min"), paste0(axes, "max")),
+                        ribbon=if(axes=="x"){c(axes)}
+                        else{c(paste0(axes, "min"), paste0(axes, "max"))},
+                        rect=c(paste0(axes, "min"), paste0(axes, "max")),
+                        tallrect=if(axes=="x")
+                          {c(paste0("xmin"), paste0("xmax"))}
+                        else{NULL},
+                        point=c(axes),
+                        path=c(axes),
+                        text=c(axes),
+                        line=c(axes),
+                        segment=c(axes, paste0(axes, "end")))
+    use_cols <- domain_cols[[geom_name]]
+    if(is.null(use_cols)){
+      warning(paste0("axis updates have not yet been implemented for geom_",
+                    geom_name), call. = FALSE)
+      return(NULL)
+    }else if(!all(use_cols %in% names(built_data))){
+      return(NULL)
+    }
+    domain_vals <- list()
+    inter_data <- built_data[[ vars[[1]] ]]
+    # If we have more than one showSelected vars, we need to compute
+    # every possible subset domain
+    if(length(vars) > 1){
+      for(i in 2:length(vars)){
+        inter_data <- interaction(inter_data, built_data[[vars [[i]] ]],
+                                  sep = "_")
+      }
+    }
+    # Split by PANEL only when specified, else use first value of PANEL
+    # It is a hack and must be handled in a better way
+    split_by <- if(split_by_panel){
+      interaction(built_data$PANEL, inter_data)
+    }else{
+      levels(inter_data) <- paste0(unique(built_data$PANEL[[1]]),
+                                   ".", levels(inter_data))
+      inter_data
+    }
+    if(geom_name %in% c("point", "path", "text", "line")){
+      # We suppress 'returning Inf' warnings when we compute a factor
+      # interaction that has no data to display
+      domain_vals[[use_cols[1]]] <- 
+        suppressWarnings(lapply(split(built_data[[use_cols[1]]],
+                                      split_by),
+                                range, na.rm=TRUE))
+    }else if(geom_name %in% c("bar", "rect", "tallrect")){
+      # Calculate min and max values of each subset separately
+      min_vals <- suppressWarnings(lapply(split(built_data[[use_cols[1]]],
+                                                split_by),
+                                          min, na.rm=TRUE))
+      max_vals <- suppressWarnings(lapply(split(built_data[[use_cols[2]]],
+                                                split_by),
+                                          max, na.rm=TRUE))
+      domain_vals <- list(mapply(c, min_vals, max_vals, SIMPLIFY = FALSE))
+    }else if(geom_name %in% c("segment")){
+      domain_vals[[use_cols[1]]] <-
+        suppressWarnings(lapply(split(built_data[, use_cols], split_by),
+                                range, na.rm=TRUE))
+    }else if(geom_name %in% c("ribbon")){
+      if(axes=="x"){
+        domain_vals[[use_cols[1]]] <- 
+          suppressWarnings(lapply(split(built_data[[use_cols[1]]],
+                                        split_by),
+                                  range, na.rm=TRUE))
+      }else{
+        min_vals <- suppressWarnings(lapply(split(built_data[[use_cols[1]]],
+                                                  split_by),
+                                            min, na.rm=TRUE))
+        max_vals <- suppressWarnings(lapply(split(built_data[[use_cols[2]]],
+                                                  split_by),
+                                            max, na.rm=TRUE))
+        domain_vals <- list(mapply(c, min_vals, max_vals, SIMPLIFY = FALSE))
+      }
+    }
+    domain_vals
+  }
+  
+  ## Out of all the possible geoms, get the min/max value which will
+  ## determine the domain to be used in the renderer
+  get_domain <- function(subset_domains){
+    use_domain <- list()
+    ## ggplot gives a margin of 5% at all four sides which does not
+    ## have any plotted data. So axis ranges are 10% bigger than the
+    ## actual ranges of data. We do the same here
+    extra_margin = 0.05
+    for(i in unique(unlist(lapply(subset_domains, names)))){
+      all_vals <- lapply(subset_domains, "[[", i)
+      all_vals <- all_vals[!sapply(all_vals, is.null)]
+      min_val <- min(sapply(all_vals, "[[", 1))
+      max_val <- max(sapply(all_vals, "[[", 2))
+      # We ignore non finite values that may have creeped in while
+      # calculating all possible subset domains
+      if(all(is.finite(c(max_val, min_val)))){
+        use_domain[[i]] <-if(max_val - min_val > 0){
+          c(min_val - (extra_margin *(max_val-min_val)),
+            max_val + (extra_margin *(max_val-min_val)))
+        }else{
+          # If min_val and max_val are same, return a range equal to
+          # the value
+          warning("some data subsets have only a single data value to plot",
+                  call. = FALSE)
+          return_dom <- c(min_val - (0.5 * min_val), max_val + (0.5 * max_val))
+          if(min_val == 0){
+            # if min_val = max_val = 0, return a range (-1, 1)
+            return_dom <- c(-1, 1)
+          }
+          return_dom
+        }
+      }else{
+        warning("some data subsets have no data to plot", call. = FALSE)
+      }
+    }
+    use_domain
+  }
+  
+  ## get axis ticks and major/minor grid lines for updating plots
+  get_ticks_gridlines <- function(use_domain){
+    gridlines <- list()
+    for (i in seq_along(use_domain)){
+      all_lines <- scales::pretty_breaks(n=10)(use_domain[[i]])
+      if(length(all_lines) > 0){
+        # make sure grid lines are not outside plot domain
+        if(use_domain[[i]][1] > all_lines[[1]]){
+          all_lines <- all_lines[2:length(all_lines)]
+        }
+        if(use_domain[[i]][2] < all_lines[[length(all_lines)]]){
+          all_lines <- all_lines[1:(length(all_lines)-1)]
+        }
+        # Every second grid line is minor, rest major
+        # Major grid lines are also used for drawing axis ticks
+        # Eg. If all_lines = 1:10
+        # minor grid lines = 1, 3, 5, 7, 9
+        # major grid lines = 2, 4, 6, 8, 10
+        majors <- all_lines[c(FALSE, TRUE)]
+        minors <- all_lines[c(TRUE, FALSE)]
+        gridlines[[ names(use_domain)[[i]] ]] <- list(minors, majors)
+      }
+    }
+    gridlines
+  }
+  
+  ## Get domains of data subsets if theme_animint(update_axes) is used
+  for(p.name in names(ggplot.list)){
+    axes_to_update <- meta$plots[[p.name]]$options$update_axes
+    if(!is.null(axes_to_update)){
+      p_geoms <- meta$plots[[p.name]]$geoms
+      for (axis in axes_to_update){
+        subset_domains <- list()
+        # Determine if every panel needs a different domain or not
+        # We conclude here if we want to split the data by PANEL
+        # for the axes updates. Else every panel uses the same domain
+        panels <- meta$plots[[p.name]]$layout$PANEL
+        axes_drawn <- 
+          meta$plots[[p.name]]$layout[[paste0("AXIS_", toupper(axis))]]
+        panels_used <- panels[axes_drawn]
+        split_by_panel <- all(panels == panels_used)
+        for(num in seq_along(p_geoms)){
+          # handle cases for showSelected: showSelectedlegendfill,
+          # showSelectedlegendcolour etc.
+          aesthetic_names <- names(meta$geoms[[ p_geoms[[num]] ]]$aes)
+          choose_ss <- grepl("^showSelected", aesthetic_names)
+          ss_selectors <- meta$geoms[[ p_geoms[[num]] ]]$aes[choose_ss]
+          # Do not calculate domains for multiple selectors
+          remove_ss <- c()
+          for(j in seq_along(ss_selectors)){
+            if(meta$selectors[[ss_selectors[j]]]$type != "single"){
+              remove_ss <- c(remove_ss, ss_selectors[j])
+            }
+          }
+          ss_selectors <- ss_selectors[!ss_selectors %in% remove_ss]
+          # Only save those selectors which are used by plot
+          for(ss in ss_selectors){
+            if(!ss %in% meta$plots[[p.name]]$axis_domains[[axis]]$selectors){
+              meta$plots[[p.name]]$axis_domains[[axis]]$selectors <-
+                c(ss, meta$plots[[p.name]]$axis_domains[[axis]]$selectors)
+            }
+          }
+          if(length(ss_selectors) > 0){
+            subset_domains[num] <- compute_domains(
+              ggplot.list[[p.name]]$built$data[[num]],
+              axis, strsplit(p_geoms[[num]], "_")[[1]][[2]],
+              names(sort(ss_selectors)), split_by_panel)
+          }
+        }
+        subset_domains <- subset_domains[!sapply(subset_domains, is.null)]
+        if(length(subset_domains) > 0){
+          use_domain <- get_domain(subset_domains)
+          # Save for renderer
+          meta$plots[[p.name]]$axis_domains[[axis]]$domains <- use_domain
+          # Get gridlines for updates
+          meta$plots[[p.name]]$axis_domains[[axis]]$grids <- 
+            get_ticks_gridlines(use_domain)
+          ## Initially selected selector values are stored in curr_select
+          ## which updates every time a user updates the axes
+          saved_selectors <- sort(names(meta$selectors))
+          for (ss in saved_selectors){
+            if(ss %in% meta$plots[[p.name]]$axis_domains[[axis]]$selectors){
+              meta$plots[[p.name]]$axis_domains[[axis]]$curr_select[[ss]] <-
+                meta$selectors[[ss]]$selected
+            }
+          }
+        }else{
+          warning(paste("update_axes specified for", toupper(axis),
+            "axis on plot", p.name, 
+            "but found no geoms with showSelected=singleSelectionVariable,",
+            "so created a plot with no updates for",
+            toupper(axis), "axis"), call. = FALSE)
+          # Do not save in plot.json file if axes is not getting updated
+          update_axes <- meta$plots[[p.name]]$options$update_axes
+          meta$plots[[p.name]]$options$update_axes <-
+            update_axes[!axis == update_axes]
+        }
+      }
+    }
+  }
+  
   ## Finally, copy html/js/json files to out.dir.
   src.dir <- system.file("htmljs",package="animint")
   to.copy <- Sys.glob(file.path(src.dir, "*"))
@@ -1633,7 +1984,7 @@ getLegendList <- function(plistextra){
     legend_type <- legend_type[legend_type != ".label"]
     gdefs[[leg]]$legend_type <- legend_type
     scale.list <- scales$scales[which(scales$find(legend_type))]
-    discrete.vec <- sapply(scale.list, inherits, "discrete")
+    discrete.vec <- sapply(scale.list, inherits, "ScaleDiscrete")
     is.discrete <- all(discrete.vec)
     gdefs[[leg]]$is.discrete <- is.discrete
     ## get the name of the legend/selection variable.
@@ -1655,6 +2006,7 @@ getLegendList <- function(plistextra){
              paste(legend_type, collapse=", "))
       }
     }
+    
     ## do not draw geoms which are constant:
     geom.list <- gdefs[[leg]]$geoms
     geom.data.list <- lapply(geom.list, "[[", "data")
@@ -1663,6 +2015,30 @@ getLegendList <- function(plistextra){
     geom.unique.rows <- sapply(geom.unique.list, nrow)
     is.ignored <- 1 < geom.data.rows & geom.unique.rows == 1
     gdefs[[leg]]$geoms <- geom.list[!is.ignored]
+    
+    ## Pass a geom.legend.list to be used by the
+    ## GetLegend function
+    geom.legend.list <- list()
+    for(geom.i in seq_along(gdefs[[leg]]$geoms)){
+      data.geom.i <- gdefs[[leg]]$geoms[[geom.i]]$data
+      params.geom.i <- gdefs[[leg]]$geoms[[geom.i]]$params
+      size.geom.i <- gdefs[[leg]]$geoms[[geom.i]]$size
+      
+      suppressWarnings(draw.key.used <- 
+                         gdefs[[leg]]$geoms[[geom.i]]$draw_key(
+                           data.geom.i, params.geom.i, size.geom.i)
+      )
+      geom.legend <- class(draw.key.used)[[1]]
+      geom.legend.list <- c(geom.legend.list, geom.legend)
+    }
+    
+    ## Process names to be used by the CleanData function
+    convert.names.list <- list(points="point", segments="path", rect="polygon")
+    names.to.change <- geom.legend.list %in% names(convert.names.list)
+    geom.legend.list[names.to.change] <- 
+      convert.names.list[unlist(geom.legend.list[names.to.change])]
+    
+    gdefs[[leg]]$geom.legend.list <- geom.legend.list
   }
   
   ## Add a flag to specify whether or not breaks was manually
@@ -1717,7 +2093,6 @@ getLegend <- function(mb){
   ## 2. In add_legend in the JS code I create a <table> for every
   ## legend, and then I bind the legend entries to <tr>, <td>, and
   ## <svg> elements.
-  geoms <- sapply(mb$geoms, function(i) i$geom$objname)
   cleanData <- function(data, key, geom, params) {
     nd <- nrow(data)
     nk <- nrow(key)
@@ -1736,7 +2111,8 @@ getLegend <- function(mb){
     data$label <- paste(data$label) # otherwise it is AsIs.
     data
   }
-  dataframes <- lapply(mb$geoms, function(i) cleanData(i$data, mb$key, i$geom$objname, i$params))
+  dataframes <- mapply(function(i, j) cleanData(i$data, mb$key, j, i$params),
+                       mb$geoms, mb$geom.legend.list, SIMPLIFY = FALSE)
   dataframes <- dataframes[which(sapply(dataframes, nrow)>0)]
   # Check to make sure datframes is non-empty. If it is empty, return NULL.
   if(length(dataframes)>0) {
@@ -1758,7 +2134,7 @@ getLegend <- function(mb){
     NULL
   }else{
     list(guide = guidetype,
-         geoms = geoms,
+         geoms = unlist(mb$geom.legend.list),
          title = mb$title,
          class = if(mb$is.discrete)mb$selector else mb$title,
          selector = mb$selector,

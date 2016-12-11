@@ -17,32 +17,33 @@ only [about 60 lines of R code](inst/examples/WorldBank-facets.R).
 
 ## Installation
 
-```s
+```r
 if (!require(devtools)) install.packages("devtools")
 devtools::install_github("tdhock/animint", upgrade_dependencies=FALSE)
 library(animint)
 example(animint)
 ```
 
-NOTE: [tdhock/ggplot2](https://github.com/tdhock/ggplot2) is required
-since [hadley/ggplot2](https://github.com/hadley/ggplot2) introduced
-some backwards-incompatible changes in Aug 2015. We would be more than
-willing to accept code contributions via a Pull Request that gets
-Animint working with the most recent version of ggplot2.
+NOTE: animint now works with standard ggplot2 >= 2.0 thanks to
+[Faizan](https://github.com/faizan-khan-iit) and
+[Kevin](https://github.com/kferris10)! If you want to use the animint
+[chunk\_vars
+option](https://github.com/tdhock/animint/wiki/Advanced-features-present-animint-but-not-in-ggplot2#use-chunk_varscvar1-var2-to-specify-how-much-data-to-load-at-a-time)
+then you will need to install
+[faizan-khan-iit/ggplot2@validate-params](https://github.com/hadley/ggplot2/pull/1649)
+until the ggplot2 developers [resolve the
+issue](https://github.com/hadley/ggplot2/issues/1694).
 
 ## Learning animint through examples
 
-The best way to learn animint is through examples. A couple of good
-introductions are Carson Sievert's [Interactive animations of
-PITCHf/x](http://cpsievert.github.io/baseballR/20140818/) and Susan
+The best way to learn animint is by reading the [Animint Designer
+Manual](http://cbio.mines-paristech.fr/~thocking/animint-book/Ch00-preface.html). Some
+other good introductions are Carson Sievert's [Interactive animations
+of PITCHf/x](http://cpsievert.github.io/baseballR/20140818/) and Susan
 VanderPlas' [animint tutorial](http://tdhock.github.io/animint/). In
-addition, there is an [examples web
-site](http://sugiyama-www.cs.titech.ac.jp/~toby/animint/index.html),
-[examples distributed with
-animint](https://github.com/tdhock/animint/tree/master/inst/examples), as
-well as more complex 'big data' examples in the
-[tdhock/animint-examples
-repo](https://github.com/tdhock/animint-examples/tree/master/examples).
+addition, animint includes many example data visualizations in our
+extensive set of [test
+cases](https://github.com/tdhock/animint/tree/master/tests/testthat).
 
 ## Frequently asked questions (FAQ)
 
@@ -96,7 +97,7 @@ interactive linked plots.
 - the advantages and disadvantages of animint compared to other
 interactive data viz libraries.
 
-It may also be useful to read our [short](https://github.com/tdhock/interactive-tutorial/tree/master/animation) and [long](https://github.com/tdhock/animint/blob/master/etc/references.org) tables of related work.
+It may also be useful to read our [short](https://github.com/tdhock/interactive-tutorial/tree/master/animation) and [long](https://github.com/tdhock/animint/blob/master/inst/etc/references.org) tables of related work.
 
 #### TODO list of features to implement
 

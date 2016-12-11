@@ -88,12 +88,12 @@ For loops are bad for two reasons:
 DSL/RENDER: after clicking and changing the displayed data subset,
 zoom/update the axes of related plots. For animations we clearly want
 to keep the same axes across animation frames, but for some other
-kinds of plots it would be nice if the axes automatically zoomed. Make
-this an option theme_animint(updateAxes=c("x", "y")) which means that
-both the x and y axes should be updated. There should also be a button
+kinds of plots it would be nice if the axes automatically zoomed. We 
+currently have theme_animint(update_axes=c("x", "y")) option for single
+selection variables for most supported geoms. There should also be a button
 next to each axis that you can click to toggle zooming on and off. The
-compiler would have to look at every showSelected subset and compute
-the axes ranges for each.
+implementation for multiple selection vars may require some computation in
+the renderer. See this: https://github.com/tdhock/animint/pull/158
 
 RENDER: move stats computation to the renderer, to support e.g.
 examples/stats.R
@@ -179,6 +179,83 @@ RENDER: Determine why border of tiles in pirates example does not seem to be ren
 RENDER: multiple animints inside of a single shiny app? This is
 probably just a theoretical issue. (why not just make a single
 animint?)
+
+2016.11.02 PR#169
+
+OPTIMIZATION: some un-necessary code was deleted in a cleanup effort
+by @faizan-khan-iit, thanks!
+
+2016.08.21 PR#158
+
+DSL/RENDER: Added theme_animint(update_axes=c("x", "y")) option
+for single selection showSelected variables.
+
+2016.08.15 PR#166
+
+BUGFIX: no more NA saved to tsv files (even when there is no common
+data tsv file).
+
+OPTIMIZATION: getCommonChunk is faster, now we only split by group
+(and vectorize over chunks rather than splitting on chunks and doing a
+for loop). Also checkCommon returns that a variable is NOT common as
+soon as we have at least two chunks for which that variable is
+different, for a given group (before, we were checking all chunks).
+
+TEST: getStyleValue now works even if there are some nodes which are
+missing the style attribute.
+
+COMPILER: when aes(group) is specified and we have NA values with a
+group, we add a new subgroup ID for each run of non-NA
+values. Normally in ggplot2 this is important since for example a line
+group with two runs of NA values will be rendered as three lines. This
+fixes the bug that was combining lines, see
+test-renderer4-NA-separate-lines.R
+
+2016.08.14 PR#165
+
+DATA: prostateLasso.
+
+BUGFIX: tooltips display correctly even after they have been updated
+via a selector change.
+
+BUGFIX: it is now OK to use .variable .value aes with the time
+selector.
+
+DSL: make_tallrect and new make_widerect use .variable and .value aes
+and key so that they now support smooth transitions.
+
+2016.07.12 PR#157
+
+GGPLOT: added support for stroke aesthetic in geom_point
+Covers #127 (test-renderer4-geom-point-stroke.R)
+
+2016.07.06 PR#156
+
+BUGFIX: tooltip and href now work properly when used together
+fixes #100 and #155 (test-renderer5-tooltip-interactivity.R)
+
+2016.06.26 PR#135
+
+GGPLOT: compiler works with ggplot2 >= 2.0 thanks to Kevin and
+(especially) Faizan!
+
+2016.05.11 PR#152
+
+GGPLOT: no warning when showSelected is used with stats which are
+known to work (hline, vline, abline).
+
+2016.05.08 PR#146
+
+GGPLOT: the compiler now stops with an informative error when stats
+are used with showSelected. New warning when position is used with
+showSelected.
+
+RENDER: aes(href) works when data_is_object (e.g. geom_polygon)
+
+2016.05.07 PR#151
+
+BUGFIX: common chunk data were not computed correctly when some chunks
+did not have all groups.
 
 2016.03.23 PR#143
 

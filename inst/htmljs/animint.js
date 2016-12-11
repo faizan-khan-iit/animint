@@ -6,10 +6,11 @@
 // Constructor for animint Object.
 var animint = function (to_select, json_file) {
 
-  function wait_until_then(timeout, condFun, readyFun) {
+   function wait_until_then(timeout, condFun, readyFun) {
+    var args=arguments
     function checkFun() {
       if(condFun()) {
-        readyFun();
+        readyFun(args[3],args[4]);
       } else{
         setTimeout(checkFun, timeout);
       }
@@ -573,17 +574,11 @@ var animint = function (to_select, json_file) {
       // axes.
       scales[panel_i] = {};
       scales[panel_i].x = d3.scale.linear()
-        .domain([0, 1])
-        .range([plotdim.xstart, plotdim.xend]);
-      scales[panel_i].x_fake = d3.scale.linear()
         .domain(axis.xrange)
         .range([plotdim.xstart, plotdim.xend]);
       scales[panel_i].y = d3.scale.linear()
-        .domain([0, 1])
+        .domain(axis.yrange)
         .range([plotdim.yend, plotdim.ystart]);
-      scales[panel_i].y_fake = d3.scale.linear()
-        .domain([axis.yrange[1], axis.yrange[0]])
-        .range([plotdim.ystart, plotdim.yend]);
       if(draw_x){
         var xaxis = d3.svg.axis()
           .scale(scales[panel_i].x)
@@ -593,8 +588,9 @@ var animint = function (to_select, json_file) {
           })
           .orient("bottom")
 	;
+  var axis_panel = "xaxis" + "_" + panel_i;
 	var xaxis_g = svg.append("g")
-          .attr("class", "xaxis axis")
+          .attr("class", "xaxis axis " + axis_panel)
           .attr("transform", "translate(0," + plotdim.yend + ")")
           .call(xaxis);
 	if(axis["xline"] == false){
@@ -613,8 +609,9 @@ var animint = function (to_select, json_file) {
             return yaxislabs[yaxisvals.indexOf(d)].toString();
           })
           .orient("left");
+  var axis_panel = "yaxis" + "_" + panel_i;
 	var yaxis_g = svg.append("g")
-          .attr("class", "yaxis axis")
+          .attr("class", "yaxis axis " + axis_panel)
           .attr("transform", "translate(" + (plotdim.xstart) + ",0)")
           .call(yaxis);
 	if(axis["yline"] == false){
@@ -639,7 +636,7 @@ var animint = function (to_select, json_file) {
       // creating g element for background, grid lines, and border
       // uses insert to draw it right before plot title
       var background = svg.insert("g", ".plottitle")
-        .attr("class", "background");
+        .attr("class", "background bgr" + panel_i);
       
       // drawing background
       if(Object.keys(p_info.panel_background).length > 1) {
@@ -1032,7 +1029,7 @@ var animint = function (to_select, json_file) {
         }
       });
       if(g_info.data_is_object){
-	if(isArray(some_data)){
+	if(isArray(some_data) && some_data.length){
 	  data["0"] = some_data;
 	}else{
 	  for(k in some_data){
@@ -1080,7 +1077,19 @@ var animint = function (to_select, json_file) {
       }
       return size;
     };
-
+    
+    // stroke_width for geom_point
+    var stroke_width = 1;  // by default ggplot2 has 0.5, animint has 1
+    if (g_info.params.hasOwnProperty("stroke")) {
+      stroke_width = g_info.params.stroke;
+    }
+    var get_stroke_width = function (d) {
+      if (aes.hasOwnProperty("stroke") && d.hasOwnProperty("stroke")) {
+        return d["stroke"];
+      }
+      return stroke_width;
+    }
+    
     var linetype = "solid";
     if (g_info.params.linetype) {
       linetype = g_info.params.linetype;
@@ -1132,7 +1141,7 @@ var animint = function (to_select, json_file) {
       }
     }
 
-    var eActions, eAppend;
+    var eActions, eAppend, linkActions;
     var key_fun = null;
     var id_fun = function(d){
       return d.id;
@@ -1246,6 +1255,17 @@ var animint = function (to_select, json_file) {
 	      return one_row.id;
       };
       elements = elements.data(kv, key_fun);
+      linkActions = function(a_elements){
+	a_elements
+	  .attr("xlink:href", function(group_info){
+            var one_group = keyed_data[group_info.value];
+            var one_row = one_group[0];
+	    return one_row.href;
+	  })
+          .attr("target", "_blank")
+          .attr("class", "geom")
+	;
+      };
       eActions = function (e) {
         e.attr("d", function (d) {
           var one_group = keyed_data[d.value];
@@ -1294,7 +1314,14 @@ var animint = function (to_select, json_file) {
           });
       };
       eAppend = "path";
-    } else if (g_info.geom == "segment") {
+    }else{
+      linkActions = function(a_elements){
+	a_elements.attr("xlink:href", function(d){ return d.href; })
+          .attr("target", "_blank")
+          .attr("class", "geom");
+      };
+    }
+    if (g_info.geom == "segment") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("x1", function (d) {
@@ -1314,7 +1341,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "line";
-    } else if (g_info.geom == "linerange") {
+    }
+    if (g_info.geom == "linerange") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("x1", function (d) {
@@ -1334,7 +1362,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "line";
-    } else if (g_info.geom == "vline") {
+    }
+    if (g_info.geom == "vline") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("x1", toXY("x", "xintercept"))
@@ -1346,7 +1375,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "line";
-    } else if (g_info.geom == "hline") {
+    }
+    if (g_info.geom == "hline") {
       // pretty much a copy of geom_vline with obvious modifications
       elements = elements.data(data, key_fun);
       eActions = function (e) {
@@ -1359,7 +1389,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "line";
-    } else if (g_info.geom == "text") {
+    }
+    if (g_info.geom == "text") {
       elements = elements.data(data, key_fun);
       // TODO: how to support vjust? firefox doensn't support
       // baseline-shift... use paths?
@@ -1375,27 +1406,20 @@ var animint = function (to_select, json_file) {
           });
       };
       eAppend = "text";
-    } else if (g_info.geom == "point") {
+    }
+    if (g_info.geom == "point") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("cx", toXY("x", "x"))
           .attr("cy", toXY("y", "y"))
           .attr("r", get_size)
           .style("fill", get_fill)
-          .style("stroke", get_colour);
+          .style("stroke", get_colour)
+          .style("stroke-width", get_stroke_width);
       };
       eAppend = "circle";
-    } else if (g_info.geom == "jitter") {
-      elements = elements.data(data, key_fun);
-      eActions = function (e) {
-        e.attr("cx", toXY("x", "x"))
-          .attr("cy", toXY("y", "y"))
-          .attr("r", get_size)
-          .style("fill", get_fill)
-          .style("stroke", get_colour);
-      };
-      eAppend = "circle";
-    } else if (g_info.geom == "tallrect") {
+    }
+    if (g_info.geom == "tallrect") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("x", toXY("x", "xmin"))
@@ -1410,7 +1434,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "rect";
-    } else if (g_info.geom == "widerect") {
+    }
+    if (g_info.geom == "widerect") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("y", toXY("y", "ymax"))
@@ -1425,7 +1450,8 @@ var animint = function (to_select, json_file) {
           .style("stroke", get_colour);
       };
       eAppend = "rect";
-    } else if (g_info.geom == "rect") {
+    }
+    if (g_info.geom == "rect") {
       elements = elements.data(data, key_fun);
       eActions = function (e) {
         e.attr("x", toXY("x", "xmin"))
@@ -1444,7 +1470,8 @@ var animint = function (to_select, json_file) {
         }
       };
       eAppend = "rect";
-    } else if (g_info.geom == "boxplot") {
+    }
+    if (g_info.geom == "boxplot") {
 
       // TODO: currently boxplots are unsupported (we intentionally
       // stop with an error in the R code). The reason why is that
@@ -1524,16 +1551,9 @@ var animint = function (to_select, json_file) {
           .style("stroke-width", get_size)
           .style("stroke", get_colour);
       };
-    } else {
-      return "unsupported geom " + g_info.geom;
     }
     elements.exit().remove();
     var enter = elements.enter();
-    var linkActions = function(a_elements){
-      a_elements.attr("xlink:href", function(d){ return d.href; })
-        .attr("target", "_blank")
-        .attr("class", "geom");
-    };
     if(g_info.aes.hasOwnProperty("href")){
       enter = enter.append("svg:a")
         .append("svg:"+eAppend);
@@ -1675,8 +1695,9 @@ var animint = function (to_select, json_file) {
 	  return d["clickSelects.variable"] + " " + d["clickSelects.value"];
 	};
       }
-      elements.text("")
-        .append("svg:title")
+      // if elements have an existing title, remove it.
+      elements.selectAll("title").remove();
+      elements.append("svg:title")
         .text(function(d_or_kv){
 	  var d = get_one(d_or_kv);
 	  return text_fun(d);
@@ -1705,10 +1726,208 @@ var animint = function (to_select, json_file) {
       eActions(elements); // Set the attributes of all elements (enter/exit/stay)
     }
   };
+  
+  
+  
+  var value_tostring = function(selected_values) {
+      //function that is helpful to change the format of the string
+      var selector_url="#"
+      for (var selc_var in selected_values){
+          if(selected_values.hasOwnProperty(selc_var)){
+              var values_str=selected_values[selc_var].join();
+              var sub_url=selc_var.concat("=","{",values_str,"}");
+              selector_url=selector_url.concat(sub_url);
+          }
+      }
+      var url_nohash=window.location.href.match(/(^[^#]*)/)[0];
+      selector_url=url_nohash.concat(selector_url);
+      return  selector_url;
+ };
+  
+  var get_values=function(){
+      // function that is useful to get the selected values
+      var selected_values={}
+      for(var s_name in Selectors){
+          var s_info=Selectors[s_name];
+          var initial_selections = [];
+          if(s_info.type==="single"){
+              initial_selections=[s_info.selected];
+          }
+          else{
+          for(var i in s_info.selected) {
+            initial_selections[i] =  s_info.selected[i];
+          }
+          }
+          selected_values[s_name]=initial_selections;    
+      }
+      return selected_values;
+  };
+  
+  var counter=-1;    
+  var update_selector_url = function() {
+      var selected_values=get_values();
+      var url=value_tostring(selected_values);
+      if(counter===-1){
+      $(".table_selector_widgets").after("<table style='display:none' class='urltable'><tr class='selectorurl'></tr></table>");
+      $(".selectorurl").append("<p>Current URL</p>");
+      $(".selectorurl").append("<a href=''></a>");
+      counter++;
+      }
+      $(".selectorurl a").attr("href",url).text(url);
+  };
+
+  // update scales for the plots that have update_axes option in
+  // theme_animint
+  function update_scales(p_name, axes, v_name, value){
+    // Get pre-computed domain
+    var axis_domains = Plots[p_name]["axis_domains"];
+    if(!isArray(axes)){
+      axes = [axes];
+    }
+    if(axis_domains != null){
+      axes.forEach(function(xyaxis){
+        // For Each PANEL, update the axes
+        Plots[p_name].layout.PANEL.forEach(function(panel_i, i){
+          // Determine whether this panel has a scale or not
+          // If not we just update the scales according to the common
+          // scale and skip the updating of axis
+          var draw_axes = Plots[p_name].layout["AXIS_"+ xyaxis.toUpperCase()][i];
+          if(draw_axes){
+            var use_panel = panel_i;
+          }else{
+            var use_panel = Plots[p_name].layout.PANEL[0];
+          }
+          // We update the current selection of the plot every time
+          // and use it to index the correct domain
+          var curr_select = axis_domains[xyaxis].curr_select;
+          if(axis_domains[xyaxis].selectors.indexOf(v_name) > -1){
+            curr_select[v_name] = value;
+            var str = use_panel+".";
+            for(selec in curr_select){
+              str = str + curr_select[selec] + "_";
+            }
+            str = str.substring(0, str.length - 1); // Strip off trailing underscore
+            var use_domain = axis_domains[xyaxis]["domains"][str];
+          }
+          if(use_domain != null){
+            Plots[p_name]["scales"][panel_i][xyaxis].domain(use_domain);
+            var scales = Plots[p_name]["scales"][panel_i][xyaxis];
+            // major and minor grid lines as calculated in the compiler
+            var grid_vals = Plots[p_name]["axis_domains"][xyaxis]["grids"][str];
+
+            // Once scales are updated, update the axis ticks if needed
+            if(draw_axes){
+              // Tick values are same as major grid lines
+              update_axes(p_name, xyaxis, panel_i, grid_vals[1]);
+            }
+            // Update major and minor grid lines
+            update_grids(p_name, xyaxis, panel_i, grid_vals, scales);
+          }
+        });
+      });
+    }
+  }
+
+  // Update the axis ticks etc. once plot is zoomed in/out
+  // currently called from update_scales.
+  function update_axes(p_name, axes, panel_i, tick_vals){
+    var orientation;
+    if(axes == "x"){
+      orientation = "bottom";
+    }else{
+      orientation = "left";
+    }
+    if(!isArray(tick_vals)){
+      tick_vals = [tick_vals];
+    }
+    var xyaxis = d3.svg.axis()
+          .scale(Plots[p_name]["scales"][panel_i][axes])
+          .orient(orientation)
+          .tickValues(tick_vals);
+    // update existing axis
+    var xyaxis_g = element.select("#plot_"+p_name).select("."+axes+"axis_"+panel_i)
+          .transition()
+          .duration(1000)
+          .call(xyaxis);
+  }
+
+  // Update major/minor grids once axes ticks have been updated
+  function update_grids(p_name, axes, panel_i, grid_vals, scales){
+    // Select panel to update
+    var bgr = element.select("#plot_"+p_name).select(".bgr"+panel_i);
+
+    var orient;
+    if(axes == "x"){
+      orient = "vert";
+    }else{
+      orient = "hor";
+    }
+    
+    // Update major and minor grid lines
+    ["minor", "major"].forEach(function(grid_class, j){
+      var lines = bgr.select(".grid_"+grid_class).select("."+orient);
+      var xy1, xy2;
+      if(axes == "x"){
+        xy1 = lines.select("line").attr("y1");
+        xy2 = lines.select("line").attr("y2");
+      }else{
+        xy1 = lines.select("line").attr("x1");
+        xy2 = lines.select("line").attr("x2");
+      }
+      
+      // Get default values for grid lines like colour, stroke etc.
+      var grid_background = Plots[p_name]["grid_"+grid_class];
+      var col = grid_background.colour;
+      var lt = grid_background.linetype;
+      var size = grid_background.size;
+      var cap = grid_background.lineend;
+
+      // Remove old lines
+      lines.selectAll("line")
+        .remove();
+
+      if(!isArray(grid_vals[j])){
+        grid_vals[j] = [grid_vals[j]];
+      }
+
+      if(axes == "x"){
+        lines.selectAll("line")
+          .data(grid_vals[j])
+          .enter()
+          .append("line")
+          .attr("y1", xy1)
+          .attr("y2", xy2)
+          .attr("x1", function(d) { return scales(d); })
+          .attr("x2", function(d) { return scales(d); })
+          .style("stroke", col)
+          .style("stroke-linecap", cap)
+          .style("stroke-width", size)
+          .style("stroke-dasharray", function() {
+            return linetypesize2dasharray(lt, size);
+          });
+      }else{
+        lines.selectAll("line")
+          .data(grid_vals[j])
+          .enter()
+          .append("line")
+          .attr("x1", xy1)
+          .attr("x2", xy2)
+          .attr("y1", function(d) { return scales(d); })
+          .attr("y2", function(d) { return scales(d); })
+          .style("stroke", col)
+          .style("stroke-linecap", cap)
+          .style("stroke-width", size)
+          .style("stroke-dasharray", function() {
+            return linetypesize2dasharray(lt, size);
+          });
+      }
+    });
+  }
 
   var update_selector = function (v_name, value) {
     value = value + "";
     var s_info = Selectors[v_name];
+    
     if(s_info.type == "single"){
       // value is the new selection.
       s_info.selected = value;
@@ -1723,6 +1942,7 @@ var animint = function (to_select, json_file) {
 	s_info.selected.splice(i_value, 1);
       }
     }
+    update_selector_url()
     // if there are levels, then there is a selectize widget which
     // should be updated.
     if(isArray(s_info.levels)){
@@ -1741,6 +1961,17 @@ var animint = function (to_select, json_file) {
       // event will be fired on the original input.
       selectized_array[v_name].setValue(selected_ids, true);
     }
+
+    // For each updated geom, check if the axes of the plot need to be
+    // updated and update them
+    s_info.update.forEach(function(g_name){
+      var plot_name = g_name.split("_").pop();
+      var axes = Plots[plot_name]["options"]["update_axes"];
+      if(axes != null){
+        update_scales(plot_name, axes, v_name, value);
+      }
+    });
+
     update_legend_opacity(v_name);
     s_info.update.forEach(function(g_name){
       update_geom(g_name, v_name);
@@ -1922,6 +2153,21 @@ var animint = function (to_select, json_file) {
       add_selector(s_name, response.selectors[s_name]);
     }
     
+    // Update the scales/axes of the plots if needed
+    // We do this so that the plots zoom in initially after loading
+    for (var p_name in response.plots) {
+      if(response.plots[p_name].axis_domains !== null){
+        for(var xy in response.plots[p_name].axis_domains){
+          var selectors = response.plots[p_name].axis_domains[xy].selectors;
+          if(!isArray(selectors)){
+            selectors = [selectors];
+          }
+          update_scales(p_name, xy, selectors[0],
+            response.selectors[selectors[0]].selected);
+        }
+      }
+    }
+
     ////////////////////////////////////////////
     // Widgets at bottom of page
     ////////////////////////////////////////////
@@ -1960,7 +2206,7 @@ var animint = function (to_select, json_file) {
     // add a button to view the animation widgets
     var show_hide_animation_controls = element.append("button")
       .text(show_message)
-      .attr("id", "show_hide_animation_controls")
+      .attr("id", viz_id + "_show_hide_animation_controls")
       .on("click", function(){
         if(this.textContent == show_message){
           time_table.style("display", "");
@@ -2027,7 +2273,7 @@ var animint = function (to_select, json_file) {
     var duration_inputs = duration_tds
       .append("input")
       .attr("id", function(s_name){
-        return "duration_ms_" + s_name;
+        return viz_id + "_duration_ms_" + s_name;
       })
       .attr("type", "text")
       .on("change", function(s_name){
@@ -2042,9 +2288,11 @@ var animint = function (to_select, json_file) {
       if(this.textContent == toggle_message){
         selector_table.style("display", "");
         show_hide_selector_widgets.text("Hide selection menus");
+        d3.select(".urltable").style("display","")
       }else{
         selector_table.style("display", "none");
         show_hide_selector_widgets.text(toggle_message);
+        d3.select(".urltable").style("display","none")
       }
     }
     var show_hide_selector_widgets = element.append("button")
@@ -2295,5 +2543,67 @@ var animint = function (to_select, json_file) {
       };
       document.addEventListener("visibilitychange", onchange);
     }
+    update_selector_url()
+    var check_func=function(){
+          var status_array = $('.status').map(function(){
+               return $.trim($(this).text());
+            }).get();
+       status_array=status_array.slice(1)
+       return status_array.every(function(elem){ return elem === "displayed"});           
+      }
+     if(window.location.hash) {
+         var fragment=window.location.hash;
+         fragment=fragment.slice(1);
+         fragment=decodeURI(fragment)
+         var frag_array=fragment.split(/(.*?})/);
+         frag_array=frag_array.filter(function(x){ return x!=""})
+         frag_array.forEach(function(selector_string){ 
+         var selector_hash=selector_string.split("=");
+         var selector_nam=selector_hash[0];
+         var selector_values=selector_hash[1];
+         var re = /\{(.*?)\}/;
+         selector_values=re.exec(selector_values)[1];
+         var array_values = selector_values.split(',');
+         var s_info=Selectors[selector_nam]
+          if(s_info.type=="single"){
+             
+                  array_values.forEach(function(element) {
+                      
+                      wait_until_then(100, check_func, update_selector,selector_nam,element)
+                      if(response.time)Animation.pause(true)
+                    });   
+                 
+             }
+             else{
+                  var old_selections = Selectors[selector_nam].selected;
+                  // the levels that need to have selections turned on
+                  array_values
+                    .filter(function(n) {
+                      return old_selections.indexOf(n) == -1;
+                    })
+                    .forEach(function(element) {
+                        wait_until_then(100, check_func, update_selector,selector_nam,element)
+                         if(response.time){
+                        Animation.pause(true)
+                        }
+                    });
+                  
+            
+                  old_selections
+                    .filter(function(n) {
+                      return array_values.indexOf(n) == -1;
+                    })
+                    .forEach(function(element) {
+                       wait_until_then(100, check_func, update_selector,selector_nam,element)
+                       if(response.time){
+                        Animation.pause(true)
+                       }
+                    });     
+             }
+         
+      })
+      }
   });
 };
+
+

@@ -1,6 +1,6 @@
 acontext("aes(tooltip)")
 
-data(WorldBank)
+data(WorldBank, package = "animint")
 not.na <- subset(WorldBank, !(is.na(life.expectancy) | is.na(fertility.rate)))
 country.counts <- table(not.na$year)
 years <- data.frame(year=as.numeric(names(country.counts)),
@@ -94,4 +94,27 @@ test_that("line tooltip renders as title", {
   title.nodes <- getNodeSet(info$html, '//g[@class="geom1_line_linetip"]//title')
   value.vec <- sapply(title.nodes, xmlValue)
   expect_identical(value.vec, c("group 1", "group 2"))
+})
+
+WorldBank1975 <- WorldBank[WorldBank$year == 1975, ]
+NotNA1975 <- subset(not.na, year==1975)
+ex_plot <- ggplot() +
+  geom_point(aes(fertility.rate, life.expectancy, color = region,
+                 tooltip = country, href = "https://github.com"),
+             data = WorldBank1975)
+
+viz <- list(ex = ex_plot)
+info <- animint2HTML(viz)
+
+test_that("tooltip works with href",{
+  # Test for bug when points are not rendered with both href + tooltip
+  point_nodes <-
+    getNodeSet(info$html, '//g[@class="geom1_point_ex"]//a//circle')
+  expected.countries <- NotNA1975$country
+  expect_equal(length(point_nodes), length(expected.countries))
+  # See that every <a> element has a title (the country name) initially
+  title_nodes <-
+    getNodeSet(info$html, '//g[@class="geom1_point_ex"]//a//title')
+  rendered_titles <- sapply(title_nodes, xmlValue)
+  expect_identical(sort(rendered_titles), sort(expected.countries))
 })
